@@ -1,94 +1,127 @@
-
 # RaptorQA Android SDK
 
-## Installation Guide
+RaptorQA lets Android applications capture and submit QA reports. The SDK is distributed through **GitHub Packages (Maven)** and supports applications written in **Java or Kotlin**.
 
-RaptorQA is an Android SDK that enables QA reporting directly from an Android application.
+## Requirements
 
-The SDK is distributed as a compiled Android Archive (`.aar`) file. You do not need access to the RaptorQA source code or a Maven Central account to install it.
+- Android application with **minSdk 26** (Android 8.0) or later
+- Gradle with access to Google's Maven repository and Maven Central
+- A GitHub account and a **personal access token (classic)** with `read:packages` permission
+- Your RaptorQA account ID and application ID
 
-### Requirements
+## 1. Configure GitHub Packages credentials
 
-- Android Studio
-- An Android application using Gradle
-- Android 8.0 (API 26) or later
-- RaptorQA account and application credentials
+GitHub requires authentication when Gradle downloads Maven packages from GitHub Packages, including public packages. **Use your own GitHub account and token; do not use the SDK publisher's token.**
 
-### Step 1 — Download the SDK
+1. In GitHub, open **Settings → Developer settings → Personal access tokens → Tokens (classic)**.
+2. Generate a token with **`read:packages`** permission.
+3. Add these properties to your *user-level* Gradle file, `~/.gradle/gradle.properties` (not the project file):
 
-1. Visit the [RaptorQA Android SDK Releases](https://github.com/BConnectSoftware/RaptorQAKotlin_Library) page.
-2. Select the latest release.
-3. Under **Assets**, download `RaptorQA-release.aar` (or the versioned AAR filename provided with the release).
-
-### Step 2 — Add the AAR to your Android project
-
-Create a `libs` directory inside your application's module if one does not already exist.
-
-Copy the downloaded AAR into that directory.
-
-Example project structure:
-
-```text
-MyAndroidProject/
-├── app/
-│   ├── libs/
-│   │   └── RaptorQA-release.aar
-│   ├── src/
-│   └── build.gradle.kts
-├── gradle/
-└── settings.gradle.kts
+```properties
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_READ_PACKAGES_TOKEN
 ```
 
-### Step 3 — Add the Gradle dependency
+Keep the token secret. Do not commit it to source control. On macOS/Linux, you can restrict access with `chmod 600 ~/.gradle/gradle.properties`.
 
-Open your application's `app/build.gradle.kts` and add the following dependency:
+For CI/CD, supply the same Gradle properties through your pipeline's secret management instead of checking them into the repository. The CI identity must have permission to read the package.
+
+## 2. Add the package repository
+
+In the **project's `settings.gradle.kts`**, add the GitHub Packages repository inside the existing `dependencyResolutionManagement.repositories` block. Keep the other repositories and settings your project already uses:
 
 ```kotlin
-dependencies {
-    implementation(files("libs/RaptorQA-release.aar"))
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri("https://maven.pkg.github.com/BConnectSoftware/RaptorQAKotlin_Library")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull
+                password = providers.gradleProperty("gpr.key").orNull
+            }
+            content {
+                includeGroup("com.bconnectsoftware")
+            }
+        }
+    }
 }
 ```
 
-Because the SDK is distributed as a standalone AAR, Gradle does not automatically resolve its external dependencies.
+If your project uses Groovy (`settings.gradle`) instead:
 
-For an application that does not already include these libraries, add the required AndroidX and Jetpack Compose dependencies:
-
-```kotlin
-dependencies {
-    implementation(files("libs/RaptorQA-release.aar"))
-
-    implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("com.google.android.material:material:1.13.0")
-
-    implementation(platform("androidx.compose:compose-bom:2025.10.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material:material-icons-extended")
-
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
-    implementation("androidx.activity:activity-compose:1.11.0")
-    implementation("androidx.window:window:1.5.1")
+```groovy
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri('https://maven.pkg.github.com/BConnectSoftware/RaptorQAKotlin_Library')
+            credentials {
+                username = providers.gradleProperty('gpr.user').orNull
+                password = providers.gradleProperty('gpr.key').orNull
+            }
+            content {
+                includeGroup('com.bconnectsoftware')
+            }
+        }
+    }
 }
 ```
 
-These are example compatible dependency versions. If your application already uses AndroidX or Compose, use versions compatible with your existing project. The release notes may specify additional requirements.
+**Note:** If your project already has a `dependencyResolutionManagement` block, edit it rather than adding a second block. Keep your existing `repositoriesMode` if it differs.
 
-### Step 4 — Initialize RaptorQA
+## 3. Add the SDK dependency
 
-Configure the SDK during application startup, using your RaptorQA account ID and application ID.
+In your **app module's** `build.gradle.kts`:
+
+```kotlin
+dependencies {
+    implementation("com.bconnectsoftware:raptorqa:1.0.0")
+}
+```
+
+Or in Groovy `app/build.gradle`:
+
+```groovy
+dependencies {
+    implementation 'com.bconnectsoftware:raptorqa:1.0.0'
+}
+```
+
+Gradle downloads the AAR and its declared AndroidX/Jetpack Compose dependencies automatically. **Do not also include a local `RaptorQA-release.aar`** in the same app.
+
+## 4. Initialize the SDK
+
+Initialize RaptorQA once during application startup, in your `Application` subclass.
+
+**Java:**
+
+```java
+import android.app.Application;
+import com.bconnect.raptorqa.RaptorQAContext;
+
+public class MyApplication extends Application {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        RaptorQAContext.configure(this, "YOUR_ACCOUNT_ID", "YOUR_APPLICATION_ID");
+    }
+}
+```
+
+**Kotlin:**
 
 ```kotlin
 import android.app.Application
 import com.bconnect.raptorqa.RaptorQAContext
 
 class MyApplication : Application() {
-
     override fun onCreate() {
         super.onCreate()
-
         RaptorQAContext.configure(
             application = this,
             accountId = "YOUR_ACCOUNT_ID",
@@ -98,7 +131,7 @@ class MyApplication : Application() {
 }
 ```
 
-Register the application class if you dont have one in your `AndroidManifest.xml`:
+Register your subclass in `app/src/main/AndroidManifest.xml` by adding `android:name` to your **existing** `<application>` element:
 
 ```xml
 <application
@@ -107,31 +140,35 @@ Register the application class if you dont have one in your `AndroidManifest.xml
 </application>
 ```
 
-Replace the example IDs with the values provided by RaptorQA.
+Also add internet permission inside `<manifest>` and **outside** `<application>`:
 
-### Step 5 — Build and run
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
 
-Sync your Gradle project, then build and launch your application.
+Replace the placeholder IDs with your RaptorQA credentials. Preserve your existing manifest attributes and activity declarations.
 
-When correctly configured, the RaptorQA SDK provides its QA reporting interface within your application.
+## 5. Sync, build, and test
 
-### Updating the SDK
+Sync Gradle in Android Studio and launch your app. Verify that the RaptorQA reporting interface opens and that a test report submits successfully.
 
-To upgrade to a newer version:
+You can inspect dependency resolution with:
 
-1. Download the updated AAR from GitHub Releases.
-2. Replace the existing file in `app/libs`.
-3. Sync Gradle.
-4. Rebuild and test your application.
+```bash
+./gradlew :app:dependencies --configuration debugRuntimeClasspath
+```
 
-### Support
+## Troubleshooting
 
-For assistance, contact **support@raptorqa.com**.
+- **401 Unauthorized:** Check the GitHub username and token, confirm `read:packages`, and check that the token/account can access the package.
+- **Could not find `com.bconnectsoftware:raptorqa`:** Confirm the repository URL, version `1.0.0`, credentials, and that the repository is configured in `dependencyResolutionManagement`.
+- **Duplicate classes or conflicting dependencies:** Remove any older manually installed RaptorQA AAR. Inspect the resolved dependency graph; existing applications can still impose incompatible dependency versions.
+- **SDK cannot submit reports:** Check internet permission and the RaptorQA account/application IDs.
 
-Website: [https://raptorqa.com](https://raptorqa.com)
+## Support and license
 
-### License
+- Website: https://raptorqa.com
+- Support: support@raptorqa.com
+- License: https://github.com/BConnectSoftware/RaptorQAKotlin_Library/blob/main/LICENSE.md
 
 Copyright © BConnect Software LLC. All rights reserved.
-
-See [LICENSE.md](https://github.com/BConnectSoftware/RaptorQAKotlin_Library/blob/main/LICENSE.md) for licensing terms.
